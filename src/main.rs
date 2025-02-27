@@ -1,3 +1,6 @@
+mod cli;
+mod tunneling;
+
 use std::{
     collections::HashMap,
     convert::Infallible,
@@ -52,10 +55,7 @@ async fn main() {
     session.channel_open_session().await.unwrap();
     while let Some((mut tunnel, channel)) = rx.recv().await {
         tokio::spawn(async move {
-            println!(
-                "new tunnel running: {}:{}",
-                tunnel.remote_addr, tunnel.remote_port
-            );
+            println!("new tunnel running: {}:{}", tunnel.to_addr, tunnel.to_port);
             tunnel.run(channel).await.unwrap();
         });
     }
@@ -65,10 +65,10 @@ struct ClientHandler {
     tx: Sender<(Tunnel, Channel<client::Msg>)>,
 }
 struct Tunnel {
-    remote_addr: IpAddr,
-    remote_port: u16,
-    rx: Arc<Mutex<OwnedReadHalf>>,
-    tx: Arc<Mutex<OwnedWriteHalf>>,
+    to_addr: IpAddr,
+    to_port: u16,
+    // rx: Arc<OwnedReadHalf>,
+    // tx: Arc<OwnedWriteHalf>,
 }
 #[derive(Error, Debug)]
 enum TunnelError {
@@ -95,24 +95,18 @@ impl From<Error> for TunnelError {
 }
 
 impl Tunnel {
-    pub async fn connect(remote_addr: &str, remote_port: u16) -> Result<Tunnel, TunnelError> {
-        let remote_addr = remote_addr.parse()?;
-        let conn = TcpStream::connect((remote_addr, remote_port)).await?;
-        let (rx, tx) = conn.into_split();
-        let rx = Arc::new(Mutex::new(rx));
-        let tx = Arc::new(Mutex::new(tx));
-        Ok(Tunnel {
-            remote_addr,
-            remote_port,
-            rx,
-            tx,
-        })
+    pub fn new(to_addr: &str, to_port: u16) -> Result<Tunnel, TunnelError> {
+        let to_addr = to_addr.parse()?;
+        Ok(Tunnel { to_addr, to_port })
     }
-    pub fn run(&mut self, channel: Channel<client::Msg>) -> JoinHandle<()> {
+    pub async fn run(
+        &mut self,
+        channel: Channel<client::Msg>,
+    ) -> Result<JoinHandle<()>, TunnelError> {
         let mut writer = channel.make_writer();
         let mut stream = channel.into_stream();
-        let tx = self.tx.clone();
-        let rx = self.rx.clone();
+        let conn = TcpStream::connect((self.to_addr, self.to_port)).await?;
+        let (mut rx, mut tx) = conn.into_split();
 
         let reading_handle = tokio::spawn(async move {
             loop {
@@ -122,14 +116,14 @@ impl Tunnel {
                         break;
                     }
                     dbg!(&n);
-                    tx.lock().await.write_all(&buf[..n]).await.unwrap();
+                    tx.write_all(&buf[..n]).await.unwrap();
                 }
             }
         });
         let writing_handle = tokio::spawn(async move {
             loop {
                 let mut buf = vec![0u8; 4096];
-                if let Ok(n) = rx.lock().await.read(&mut buf).await {
+                if let Ok(n) = rx.read(&mut buf).await {
                     if n == 0 {
                         break;
                     }
@@ -138,7 +132,7 @@ impl Tunnel {
                 }
             }
         });
-        tokio::spawn(async move {
+        Ok(tokio::spawn(async move {
             select! {
                 _w = writing_handle => {
                     println!("service disconnected");
@@ -147,7 +141,7 @@ impl Tunnel {
                     println!("client disconnected");
                 }
             }
-        })
+        }))
     }
 }
 
@@ -171,7 +165,7 @@ impl Handler for ClientHandler {
         _originator_port: u32,
         _session: &mut client::Session,
     ) -> Result<(), Self::Error> {
-        let mut tunnel = Tunnel::connect("127.0.0.1", 8080).await.unwrap();
+        let tunnel = Tunnel::new("127.0.0.1", 8080).unwrap();
         self.tx.send((tunnel, channel)).await.unwrap();
 
         Ok(())
