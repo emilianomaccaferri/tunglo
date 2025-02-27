@@ -1,17 +1,33 @@
-use std::net::{AddrParseError, IpAddr};
+use std::{
+    env::VarError,
+    net::{AddrParseError, IpAddr},
+    sync::Arc,
+};
 
-use russh::keys::PrivateKey;
+use russh::{
+    client,
+    keys::{load_secret_key, PrivateKey, PrivateKeyWithHashAlg},
+    Channel,
+};
 use thiserror::Error;
+use tokio::sync::mpsc::{self, Sender};
 
-use super::{tunnel_config::TunnelConfig, tunnel_runner::TunnelRunner};
+use crate::tunneling::handler::ClientHandler;
 
-pub(crate) struct Tunnel<'tunnel_lifetime> {
+use super::{
+    tunnel_config::{PrivateKeyPassphrase, TunnelConfig},
+    tunnel_runner::TunnelRunner,
+};
+
+pub(crate) struct Tunnel {
     /// tunnel name
     name: String,
     /// public address of the machine you're using for tunneling
     remote_ssh_address: String,
     /// tunneling machine ssh port
     remote_ssh_port: u16,
+    /// the ssh user
+    remote_ssh_user: String,
     /// private key for connecting to the tunneling machine
     private_key: PrivateKey,
     /// which interface the tunnel should be set on (127.0.0.1, 0.0.0.0, ...)
@@ -23,14 +39,18 @@ pub(crate) struct Tunnel<'tunnel_lifetime> {
     /// tunneled service's port
     to_port: u16,
     /// clients connected to the tunnel
-    runners: Vec<TunnelRunner<'tunnel_lifetime>>,
+    runners: Vec<TunnelRunner>,
 }
 #[derive(Error, Debug)]
-enum TunnelError {
+pub enum TunnelError {
     #[error("invalid address supplied: {0}")]
     InvalidAddress(String),
     #[error("io error: {1}")]
     Io(std::io::Error, String),
+    #[error("private key error: {1}")]
+    PrivateKey(russh::keys::Error, String),
+    #[error("env variable for private key error: {0}")]
+    EnvError(String),
 }
 impl From<AddrParseError> for TunnelError {
     fn from(value: AddrParseError) -> Self {
@@ -43,9 +63,91 @@ impl From<std::io::Error> for TunnelError {
         Self::Io(value, str)
     }
 }
-impl<'t> Tunnel<'t> {
-    pub fn new(config: TunnelConfig) -> Result<Tunnel<'t>, TunnelError> {
-        Ok(Tunnel {})
+impl From<russh::keys::Error> for TunnelError {
+    fn from(value: russh::keys::Error) -> Self {
+        let str_val = value.to_string();
+        Self::PrivateKey(value, str_val)
     }
-    fn load_private_key(path: &str) -> Result<PrivateKey, TunnelError> {}
+}
+
+impl Tunnel {
+    pub fn new(config: TunnelConfig) -> Result<Tunnel, TunnelError> {
+        let private_key =
+            Tunnel::load_private_key(&config.private_key_path, &config.private_key_passphrase)?;
+        Ok(Tunnel {
+            name: config.name,
+            private_key,
+            remote_interface_address: config.remote_interface_address,
+            remote_interface_port: config.remote_interface_port,
+            remote_ssh_address: config.remote_ssh_address,
+            remote_ssh_port: config.remote_ssh_port,
+            remote_ssh_user: config.remote_ssh_user,
+            to_address: config.to_address,
+            to_port: config.to_port,
+            runners: Vec::new(),
+        })
+    }
+    pub async fn connect(&self) {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+        let config = client::Config::default();
+        let config = Arc::new(config);
+        let mut session = client::connect(
+            config,
+            (self.remote_ssh_address.to_owned(), self.remote_ssh_port),
+            ClientHandler::new(&self.to_address, self.to_port, tx),
+        )
+        .await
+        .unwrap();
+        let auth_res = session
+            .authenticate_publickey(
+                "macca",
+                PrivateKeyWithHashAlg::new(
+                    Arc::new(self.private_key.to_owned()),
+                    session.best_supported_rsa_hash().await.unwrap().flatten(),
+                ),
+            )
+            .await
+            .unwrap();
+
+        dbg!(&auth_res);
+        session
+            .tcpip_forward(
+                self.remote_interface_address.to_owned(),
+                self.remote_interface_port as u32, // u32 for some reason??
+            )
+            .await
+            .unwrap(); // this asks the server to open the specified port on the remote interface
+        session.channel_open_session().await.unwrap();
+        while let Some((mut runner, channel)) = rx.recv().await {
+            tokio::spawn(async move {
+                println!("new tunnel running: {}:{}", runner.addr(), runner.port());
+                runner.run(channel).await.unwrap();
+            });
+        }
+    }
+    fn load_private_key(
+        key_path: &str,
+        passphrase: &Option<PrivateKeyPassphrase>,
+    ) -> Result<PrivateKey, TunnelError> {
+        if let Some(passphrase) = passphrase {
+            match passphrase {
+                PrivateKeyPassphrase::PlainText(plaintext_key) => {
+                    Ok(load_secret_key(key_path, Some(plaintext_key))?)
+                }
+                PrivateKeyPassphrase::Environment(env_var) => {
+                    let env_value = std::env::var(env_var).map_err(|e| match e {
+                        VarError::NotPresent => TunnelError::EnvError(
+                            "{env_var} not found in the environment!".to_string(),
+                        ),
+                        VarError::NotUnicode(_) => {
+                            TunnelError::EnvError("{env_var} is not unicode!".to_string())
+                        }
+                    })?;
+                    Ok(load_secret_key(key_path, Some(&env_value))?)
+                }
+            }
+        } else {
+            Ok(load_secret_key(key_path, None)?)
+        }
+    }
 }

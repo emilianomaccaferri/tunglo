@@ -2,6 +2,7 @@ tunnels:
   - name: my-web-service
     remote-ssh-address: 116.203.141.67
     remote-ssh-port: 22
+    remote-ssh-user: macca
     private-key-path: /home/macca/.ssh/macca-desktop
     # private-key-passphrase: passphrase 
     # private-key-passphrase: 
