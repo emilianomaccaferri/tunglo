@@ -19,19 +19,23 @@ pub(crate) struct TunnelConfig {
     pub remote_interface_port: u16,
     pub to_address: String,
     pub to_port: u16,
+    #[serde(rename = "type")]
     pub tun_type: TunnelType,
 }
 #[derive(Deserialize, Debug)]
 pub(crate) enum TunnelType {
+    #[serde(alias = "http", alias = "HTTP")]
     Http,
+    #[serde(alias = "http2", alias = "HTTP2")]
     Http2,
+    #[serde(alias = "generic", alias = "GENERIC")]
     Generic,
 }
 #[derive(Deserialize, Debug)]
-pub(crate) enum PrivateKeyPassphrase {
+pub(crate) struct PrivateKeyPassphrase {
     /// the private key is stored in platintext inside the tunnel configuration file
     /// (passhphrase-value)
-    PlainText(String),
+    pub value: Option<String>,
     /// the private key must be fetched from an environmental variable (env-var-name)
-    Environment(String),
+    pub from_env: Option<String>,
 }

@@ -125,10 +125,14 @@ impl Tunnel {
     ) -> Result<PrivateKey, TunnelError> {
         if let Some(passphrase) = passphrase {
             match passphrase {
-                PrivateKeyPassphrase::PlainText(plaintext_key) => {
-                    Ok(load_secret_key(key_path, Some(plaintext_key))?)
-                }
-                PrivateKeyPassphrase::Environment(env_var) => {
+                PrivateKeyPassphrase {
+                    value: Some(plaintext_key),
+                    from_env: None,
+                } => Ok(load_secret_key(key_path, Some(plaintext_key))?),
+                PrivateKeyPassphrase {
+                    from_env: Some(env_var),
+                    value: None,
+                } => {
                     let env_value = std::env::var(env_var).map_err(|e| match e {
                         VarError::NotPresent => TunnelError::EnvError(
                             "{env_var} not found in the environment!".to_string(),
@@ -139,6 +143,7 @@ impl Tunnel {
                     })?;
                     Ok(load_secret_key(key_path, Some(&env_value))?)
                 }
+                _ => Ok(load_secret_key(key_path, None)?),
             }
         } else {
             Ok(load_secret_key(key_path, None)?)

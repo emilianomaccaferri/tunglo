@@ -1,5 +1,4 @@
-
-use russh::{client, Channel};
+use russh::{Channel, client};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
