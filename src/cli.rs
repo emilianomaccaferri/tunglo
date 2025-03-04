@@ -5,5 +5,5 @@ use clap::Parser;
 pub(crate) struct TungloCli {
     /// custom config file
     #[arg(short, long)]
-    config: Option<String>,
+    pub config: Option<String>,
 }

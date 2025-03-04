@@ -1,3 +1,13 @@
+use std::collections::HashMap;
+
+use serde::Deserialize;
+
+pub const DEFAULT_PATH: &str = "~/.config/tunglo.toml";
+#[derive(Deserialize, Debug)]
+pub(crate) struct TungloConfig {
+    pub tunnels: Vec<TunnelConfig>,
+}
+#[derive(Deserialize, Debug)]
 pub(crate) struct TunnelConfig {
     pub name: String,
     pub remote_ssh_address: String,
@@ -11,11 +21,13 @@ pub(crate) struct TunnelConfig {
     pub to_port: u16,
     pub tun_type: TunnelType,
 }
+#[derive(Deserialize, Debug)]
 pub(crate) enum TunnelType {
     Http,
     Http2,
     Generic,
 }
+#[derive(Deserialize, Debug)]
 pub(crate) enum PrivateKeyPassphrase {
     /// the private key is stored in platintext inside the tunnel configuration file
     /// (passhphrase-value)

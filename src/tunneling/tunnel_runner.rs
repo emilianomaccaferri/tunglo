@@ -1,14 +1,8 @@
-use std::sync::Arc;
 
 use russh::{client, Channel};
-use thiserror::Error;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{
-        tcp::{OwnedReadHalf, OwnedWriteHalf},
-        TcpStream,
-    },
-    sync::Mutex,
+    net::TcpStream,
     task::JoinHandle,
 };
 

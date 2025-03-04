@@ -1,0 +1,14 @@
+[[tunnels]]
+name = "my_web_service"
+remote_ssh_address = "116.203.141.67"
+remote_ssh_port = 22
+remote_ssh_user = "macca"
+private_key_path = "/home/macca/.ssh/macca_desktop"
+private_key_passphrase = "passphrase_plaintext"
+remote_interface_address = "0.0.0.0"
+remote_interface_port = 9000
+to_address = "11.11.11.201"
+to_port = 80
+type = "http"
+# [tunnels.my_web_service.private_key_passphrase]
+# from_env = "env_secret_key"

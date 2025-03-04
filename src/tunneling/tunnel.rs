@@ -1,23 +1,17 @@
-use std::{
-    env::VarError,
-    net::{AddrParseError, IpAddr},
-    sync::Arc,
-};
+use std::{env::VarError, net::AddrParseError, sync::Arc};
 
 use russh::{
     client,
-    keys::{load_secret_key, PrivateKey, PrivateKeyWithHashAlg},
-    Channel,
+    keys::{PrivateKey, PrivateKeyWithHashAlg, load_secret_key},
 };
 use thiserror::Error;
-use tokio::sync::mpsc::{self, Sender};
 
-use crate::tunneling::handler::ClientHandler;
-
-use super::{
-    tunnel_config::{PrivateKeyPassphrase, TunnelConfig},
-    tunnel_runner::TunnelRunner,
+use crate::{
+    config::{PrivateKeyPassphrase, TunnelConfig},
+    tunneling::handler::ClientHandler,
 };
+
+use super::tunnel_runner::TunnelRunner;
 
 pub(crate) struct Tunnel {
     /// tunnel name
@@ -100,7 +94,7 @@ impl Tunnel {
         .unwrap();
         let auth_res = session
             .authenticate_publickey(
-                "macca",
+                self.remote_ssh_user.clone(),
                 PrivateKeyWithHashAlg::new(
                     Arc::new(self.private_key.to_owned()),
                     session.best_supported_rsa_hash().await.unwrap().flatten(),

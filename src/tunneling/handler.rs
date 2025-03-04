@@ -1,4 +1,4 @@
-use super::{tunnel::Tunnel, tunnel_runner::TunnelRunner};
+use super::tunnel_runner::TunnelRunner;
 use russh::{
     client::{self, Handler},
     Channel,
