@@ -1,17 +1,19 @@
 use russh::{Channel, client};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncWriteExt, Join},
     net::TcpStream,
     task::JoinHandle,
 };
 
-use super::tunnel::TunnelError;
+use super::tunnel::{Tunnel, TunnelError};
 
-pub(super) struct TunnelRunner {
+pub(crate) struct TunnelRunner {
     to_addr: String,
     to_port: u16,
 }
-
+type RunResult = tokio::task::JoinHandle<
+    std::result::Result<std::result::Result<(), TunnelError>, tokio::task::JoinError>,
+>;
 impl TunnelRunner {
     pub fn addr(&self) -> &str {
         &self.to_addr
@@ -25,16 +27,13 @@ impl TunnelRunner {
             to_port,
         })
     }
-    pub async fn run(
-        &mut self,
-        channel: Channel<client::Msg>,
-    ) -> Result<JoinHandle<()>, TunnelError> {
+    pub async fn run(&mut self, channel: Channel<client::Msg>) -> Result<RunResult, TunnelError> {
         let mut writer = channel.make_writer();
         let mut stream = channel.into_stream();
         let conn = TcpStream::connect((self.to_addr.to_string(), self.to_port)).await?;
         let (mut rx, mut tx) = conn.into_split();
 
-        let reading_handle = tokio::spawn(async move {
+        let reading_handle: JoinHandle<Result<(), TunnelError>> = tokio::spawn(async move {
             loop {
                 let mut buf = vec![0u8; 4096];
                 if let Ok(n) = stream.read(&mut buf).await {
@@ -43,13 +42,13 @@ impl TunnelRunner {
                     }
                     // dbg!(&n);
                     if let Err(e) = tx.write_all(&buf[..n]).await {
-                        eprintln!("bad write: {:?}", e);
-                        break;
+                        return Err(TunnelError::Io(e, "bad_read".to_string()));
                     }
                 }
             }
+            Ok(())
         });
-        let writing_handle = tokio::spawn(async move {
+        let writing_handle: JoinHandle<Result<(), TunnelError>> = tokio::spawn(async move {
             loop {
                 let mut buf = vec![0u8; 4096];
                 if let Ok(n) = rx.read(&mut buf).await {
@@ -58,21 +57,22 @@ impl TunnelRunner {
                     }
                     dbg!(&n);
                     if let Err(e) = writer.write_all(&buf[..n]).await {
-                        eprintln!("bad write: {:?}", e);
-                        break;
+                        return Err(TunnelError::Io(e, "bad_write".to_string()));
                     };
                 }
             }
+            Ok(())
         });
-        Ok(tokio::spawn(async move {
+        let select_future = tokio::spawn(async move {
             tokio::select! {
-                _w = writing_handle => {
-                    println!("service disconnected");
+                write_result = writing_handle => {
+                    write_result
                 },
-                _r = reading_handle => {
-                    println!("client disconnected");
+                read_result = reading_handle => {
+                    read_result
                 }
             }
-        }))
+        });
+        Ok(select_future)
     }
 }

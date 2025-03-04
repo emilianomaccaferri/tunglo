@@ -1,7 +1,7 @@
 use super::tunnel_runner::TunnelRunner;
 use russh::{
-    client::{self, Handler},
     Channel,
+    client::{self, Handler},
 };
 use tokio::sync::mpsc::Sender;
 
@@ -45,7 +45,7 @@ impl Handler for ClientHandler {
     ) -> Result<(), Self::Error> {
         let tunnel_runner = TunnelRunner::new(&self.to_addr, self.to_port).unwrap();
         self.tx.send((tunnel_runner, channel)).await.unwrap(); // send the runner back to the
-                                                               // Tunnel instance
+        // Tunnel instance
 
         Ok(())
     }

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.31", features = ["derive"] }
+futures = "0.3.31"
 russh = "0.50.0"
 serde = { version = "1.0.218", features = ["derive"] }
 thiserror = "2.0.11"

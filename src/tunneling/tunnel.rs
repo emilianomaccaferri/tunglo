@@ -1,10 +1,11 @@
 use std::{env::VarError, net::AddrParseError, sync::Arc};
 
 use russh::{
-    client,
+    Channel, client,
     keys::{PrivateKey, PrivateKeyWithHashAlg, load_secret_key},
 };
 use thiserror::Error;
+use tokio::{sync::mpsc::Receiver, task::JoinHandle};
 
 use crate::{
     config::{PrivateKeyPassphrase, TunnelConfig},
@@ -44,7 +45,9 @@ pub enum TunnelError {
     #[error("private key error: {1}")]
     PrivateKey(russh::keys::Error, String),
     #[error("env variable for private key error: {0}")]
-    EnvError(String),
+    Env(String),
+    #[error("ssh error: {0}")]
+    Ssh(String),
 }
 impl From<AddrParseError> for TunnelError {
     fn from(value: AddrParseError) -> Self {
@@ -61,6 +64,11 @@ impl From<russh::keys::Error> for TunnelError {
     fn from(value: russh::keys::Error) -> Self {
         let str_val = value.to_string();
         Self::PrivateKey(value, str_val)
+    }
+}
+impl From<russh::Error> for TunnelError {
+    fn from(value: russh::Error) -> Self {
+        Self::Ssh(value.to_string())
     }
 }
 
@@ -81,8 +89,10 @@ impl Tunnel {
             runners: Vec::new(),
         })
     }
-    pub async fn connect(&self) {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+    pub async fn connect(
+        &self,
+    ) -> Result<Receiver<(TunnelRunner, Channel<client::Msg>)>, TunnelError> {
+        let (tx, rx) = tokio::sync::mpsc::channel(32);
         let config = client::Config::default();
         let config = Arc::new(config);
         let mut session = client::connect(
@@ -109,15 +119,13 @@ impl Tunnel {
                 self.remote_interface_address.to_owned(),
                 self.remote_interface_port as u32, // u32 for some reason??
             )
-            .await
-            .unwrap(); // this asks the server to open the specified port on the remote interface
+            .await?; // this asks the server to open the specified port on the remote interface
         session.channel_open_session().await.unwrap();
-        while let Some((mut runner, channel)) = rx.recv().await {
-            tokio::spawn(async move {
-                println!("new tunnel running: {}:{}", runner.addr(), runner.port());
-                runner.run(channel).await.unwrap();
-            });
-        }
+
+        Ok(rx)
+    }
+    pub fn name(&self) -> &str {
+        &self.name
     }
     fn load_private_key(
         key_path: &str,
@@ -134,11 +142,11 @@ impl Tunnel {
                     value: None,
                 } => {
                     let env_value = std::env::var(env_var).map_err(|e| match e {
-                        VarError::NotPresent => TunnelError::EnvError(
-                            "{env_var} not found in the environment!".to_string(),
-                        ),
+                        VarError::NotPresent => {
+                            TunnelError::Env("{env_var} not found in the environment!".to_string())
+                        }
                         VarError::NotUnicode(_) => {
-                            TunnelError::EnvError("{env_var} is not unicode!".to_string())
+                            TunnelError::Env("{env_var} is not unicode!".to_string())
                         }
                     })?;
                     Ok(load_secret_key(key_path, Some(&env_value))?)
