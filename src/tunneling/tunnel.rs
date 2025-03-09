@@ -1,14 +1,14 @@
-use std::{env::VarError, net::AddrParseError, sync::Arc};
-
 use russh::{
-    Channel, client,
+    Channel,
+    client::{self, Handle, Session},
     keys::{PrivateKey, PrivateKeyWithHashAlg, load_secret_key},
 };
+use std::{env::VarError, net::AddrParseError, sync::Arc};
 use thiserror::Error;
 use tokio::{sync::mpsc::Receiver, task::JoinHandle};
 
 use crate::{
-    config::{PrivateKeyPassphrase, TunnelConfig},
+    config::{PrivateKeyPassphrase, TunnelConfig, TunnelType},
     tunneling::handler::ClientHandler,
 };
 
@@ -35,6 +35,8 @@ pub(crate) struct Tunnel {
     to_port: u16,
     /// clients connected to the tunnel
     runners: Vec<TunnelRunner>,
+    /// ssh session
+    session_handle: Option<Handle<ClientHandler>>,
 }
 #[derive(Error, Debug)]
 pub enum TunnelError {
@@ -87,12 +89,11 @@ impl Tunnel {
             to_address: config.to_address,
             to_port: config.to_port,
             runners: Vec::new(),
+            session_handle: None,
         })
     }
-    pub async fn connect(
-        &self,
-    ) -> Result<Receiver<(TunnelRunner, Channel<client::Msg>)>, TunnelError> {
-        let (tx, rx) = tokio::sync::mpsc::channel(32);
+    pub async fn connect(&mut self) -> Result<JoinHandle<()>, TunnelError> {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(32);
         let config = client::Config::default();
         let config = Arc::new(config);
         let mut session = client::connect(
@@ -113,7 +114,6 @@ impl Tunnel {
             .await
             .unwrap();
 
-        dbg!(&auth_res);
         session
             .tcpip_forward(
                 self.remote_interface_address.to_owned(),
@@ -121,8 +121,19 @@ impl Tunnel {
             )
             .await?; // this asks the server to open the specified port on the remote interface
         session.channel_open_session().await.unwrap();
+        self.session_handle = Some(session);
 
-        Ok(rx)
+        let handler = tokio::spawn(async move {
+            while let Some((mut runner, chan)) = rx.recv().await {
+                runner.run(chan).await.expect("runner error");
+            }
+        });
+        println!(
+            "tunnel to {}:{} through {} running",
+            self.to_address, self.to_port, self.remote_ssh_address
+        );
+
+        Ok(handler)
     }
     pub fn name(&self) -> &str {
         &self.name

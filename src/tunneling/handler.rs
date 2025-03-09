@@ -30,7 +30,6 @@ impl Handler for ClientHandler {
         &mut self,
         server_public_key: &russh::keys::ssh_key::PublicKey,
     ) -> Result<bool, Self::Error> {
-        dbg!(&server_public_key);
         // TODO: implment this!!!
         Ok(true)
     }
@@ -44,7 +43,8 @@ impl Handler for ClientHandler {
         _session: &mut client::Session,
     ) -> Result<(), Self::Error> {
         let tunnel_runner = TunnelRunner::new(&self.to_addr, self.to_port).unwrap();
-        self.tx.send((tunnel_runner, channel)).await.unwrap(); // send the runner back to the
+        self.tx.send((tunnel_runner, channel)).await.unwrap(); // send the runner back to the        
+        println!("incoming connection: {_originator_address}:{_originator_port}");
         // Tunnel instance
 
         Ok(())

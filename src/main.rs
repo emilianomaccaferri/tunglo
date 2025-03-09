@@ -16,32 +16,19 @@ pub async fn main() -> Result<(), TunnelError> {
     let config = std::fs::read_to_string(cli.config.unwrap_or(config::DEFAULT_PATH.to_string()))
         .expect("error while reading config: ");
     let loaded_config: TungloConfig = toml::from_str(&config).unwrap();
-    let tunnels: Vec<Tunnel> = loaded_config
+    let mut tunnels: Vec<Tunnel> = loaded_config
         .tunnels
         .into_iter()
         .map(|c| Tunnel::new(c).unwrap())
         .collect();
 
-    // let mut handlers = vec![];
+    let mut handlers = vec![];
 
-    for tun in tunnels {
-        println!("{}", tun.name())
-        // let mut rx = tun.connect().await?;
-        // println!("tunnel {}: connected", tun.name());
-        // // let handler = tokio::spawn(async move {
-        // // wait for connections on another tokio task
-        // while let Some((mut runner, channel)) = rx.recv().await {
-        //     println!("waiting...");
-        //     tokio::spawn(async move {
-        //         println!("new tunnel running: {}:{}", runner.addr(), runner.port());
-        //         runner.run(channel).await.expect("runner error: ");
-        //     });
-        // }
-        // });
-        // handler.await;
-        // handlers.push(handler);
+    for i in 0..tunnels.len() {
+        if let Some(tunnel) = tunnels.get_mut(i) {
+            handlers.push(tunnel.connect().await.unwrap());
+        }
     }
-    // join_all(handlers).await;
-
+    join_all(handlers).await;
     Ok(())
 }

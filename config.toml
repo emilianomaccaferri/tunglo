@@ -6,9 +6,20 @@ remote_ssh_user = "macca"
 private_key_path = "/Users/macca/.ssh/macca-macbook"
 remote_interface_address = "0.0.0.0"
 remote_interface_port = 9000
-to_address = "11.11.11.201"
-to_port = 80
+to_address = "localhost"
+to_port = 8080
 type = "http"
 # [tunnels.private_key_passphrase]
 # value = "plaintext_value"
 # from_env = "env-var-name"
+[[tunnels]]
+name = "another_web_service"
+remote_ssh_address = "116.203.141.67"
+remote_ssh_port = 22
+remote_ssh_user = "macca"
+private_key_path = "/Users/macca/.ssh/macca-macbook"
+remote_interface_address = "0.0.0.0"
+remote_interface_port = 9001
+to_address = "localhost"
+to_port = 8081
+type = "http"
