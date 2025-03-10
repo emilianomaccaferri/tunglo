@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use clap::Parser;
 use cli::TungloCli;
-use config::{TungloConfig, TunnelConfig};
-use futures::{StreamExt, future::join_all, stream::FuturesUnordered};
+use config::TungloConfig;
+use futures::future::join_all;
 use tunneling::tunnel::{Tunnel, TunnelError};
 
 mod cli;
