@@ -11,7 +11,10 @@ pub(crate) mod local;
 pub(crate) mod rqlite;
 
 #[derive(Error, Debug)]
-pub enum StorageError {}
+pub enum StorageError {
+    #[error("sqlite returned an error: {1}")]
+    LocalSqlite(rusqlite::Error, String),
+}
 
 #[async_trait]
 pub(crate) trait Storage: Send + Sync {
@@ -25,7 +28,7 @@ pub(crate) trait Storage: Send + Sync {
 }
 
 pub fn get_storage(storage_config: StorageConfig) -> Result<Box<dyn Storage>, TunnelError> {
-    let storage: Result<Box<dyn Storage>, TunnelError> = match storage_config.storage_type {
+    match storage_config.storage_type {
         StorageType::Rqlite => {
             if let Some(host) = storage_config.rqlite_host {
                 Ok(Box::new(RqliteStorage::new(
@@ -37,7 +40,12 @@ pub fn get_storage(storage_config: StorageConfig) -> Result<Box<dyn Storage>, Tu
                 Err(TunnelError::NoRqliteHost)
             }
         }
-        StorageType::Local => Ok(Box::new(LocalStorage::new())),
-    };
-    Ok(storage?)
+        StorageType::Local => Ok(Box::new(LocalStorage::new()?)),
+    }
+}
+
+impl From<StorageError> for TunnelError {
+    fn from(err: StorageError) -> Self {
+        TunnelError::StorageLayer(err.to_string())
+    }
 }

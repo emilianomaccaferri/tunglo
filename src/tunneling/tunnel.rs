@@ -55,6 +55,8 @@ pub enum TunnelError {
     Ssh(String),
     #[error("no rqlite host specified!")]
     NoRqliteHost,
+    #[error("storage error: {0}")]
+    StorageLayer(String),
 }
 impl From<AddrParseError> for TunnelError {
     fn from(value: AddrParseError) -> Self {
