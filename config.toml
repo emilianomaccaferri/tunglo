@@ -1,3 +1,10 @@
+[storage]
+type = "local" # uses a simple "known_hosts" file
+# type = "rqlite"
+# rqlite_host = "rqlite_host:3000"
+# rqlite_user = "" # Option
+# rqlite_password = "" # Option
+
 [[tunnels]]
 name = "my_web_service"
 remote_ssh_address = "116.203.141.67"

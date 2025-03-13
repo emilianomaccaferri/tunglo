@@ -6,9 +6,10 @@ use russh::{
 use std::{env::VarError, net::AddrParseError, sync::Arc};
 use thiserror::Error;
 use tokio::{sync::mpsc::Receiver, task::JoinHandle};
+use tracing::info;
 
 use crate::{
-    config::{PrivateKeyPassphrase, TunnelConfig, TunnelType},
+    config::{PrivateKeyPassphrase, StorageConfig, TunnelConfig, TunnelType},
     tunneling::handler::ClientHandler,
 };
 
@@ -37,6 +38,8 @@ pub(crate) struct Tunnel {
     runners: Vec<TunnelRunner>,
     /// ssh session
     session_handle: Option<Handle<ClientHandler>>,
+    /// used to determine how to retrieve stored hosts
+    storage_config: StorageConfig,
 }
 #[derive(Error, Debug)]
 pub enum TunnelError {
@@ -50,6 +53,8 @@ pub enum TunnelError {
     Env(String),
     #[error("ssh error: {0}")]
     Ssh(String),
+    #[error("no rqlite host specified!")]
+    NoRqliteHost,
 }
 impl From<AddrParseError> for TunnelError {
     fn from(value: AddrParseError) -> Self {
@@ -75,7 +80,7 @@ impl From<russh::Error> for TunnelError {
 }
 
 impl Tunnel {
-    pub fn new(config: TunnelConfig) -> Result<Tunnel, TunnelError> {
+    pub fn new(config: TunnelConfig, storage_config: StorageConfig) -> Result<Tunnel, TunnelError> {
         let private_key =
             Tunnel::load_private_key(&config.private_key_path, &config.private_key_passphrase)?;
         Ok(Tunnel {
@@ -90,6 +95,7 @@ impl Tunnel {
             to_port: config.to_port,
             runners: Vec::new(),
             session_handle: None,
+            storage_config,
         })
     }
     pub async fn connect(&mut self) -> Result<JoinHandle<()>, TunnelError> {
@@ -99,11 +105,17 @@ impl Tunnel {
         let mut session = client::connect(
             config,
             (self.remote_ssh_address.to_owned(), self.remote_ssh_port),
-            ClientHandler::new(&self.to_address, self.to_port, tx),
+            ClientHandler::new(
+                &self.to_address,
+                self.to_port,
+                &self.remote_ssh_address,
+                self.remote_ssh_port,
+                self.storage_config.clone(),
+                tx,
+            )?,
         )
-        .await
-        .unwrap();
-        let auth_res = session
+        .await?;
+        session
             .authenticate_publickey(
                 self.remote_ssh_user.clone(),
                 PrivateKeyWithHashAlg::new(
@@ -111,8 +123,7 @@ impl Tunnel {
                     session.best_supported_rsa_hash().await.unwrap().flatten(),
                 ),
             )
-            .await
-            .unwrap();
+            .await?;
 
         session
             .tcpip_forward(
@@ -128,7 +139,7 @@ impl Tunnel {
                 runner.run(chan).await.expect("runner error");
             }
         });
-        println!(
+        info!(
             "tunnel to {}:{} through {} running",
             self.to_address, self.to_port, self.remote_ssh_address
         );

@@ -1,11 +1,27 @@
 use serde::Deserialize;
 
 pub const DEFAULT_PATH: &str = "~/.config/tunglo.toml";
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, PartialEq)]
 pub(crate) struct TungloConfig {
+    pub storage: StorageConfig,
     pub tunnels: Vec<TunnelConfig>,
 }
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub(crate) struct StorageConfig {
+    #[serde(rename = "type")]
+    pub storage_type: StorageType,
+    pub rqlite_host: Option<String>,
+    pub rqlite_user: Option<String>,
+    pub rqlite_password: Option<String>,
+}
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub(crate) enum StorageType {
+    #[serde(alias = "local", alias = "LOCAL")]
+    Local,
+    #[serde(alias = "rqlite", alias = "RQLITE")]
+    Rqlite,
+}
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub(crate) struct TunnelConfig {
     pub name: String,
     pub remote_ssh_address: String,
@@ -40,12 +56,12 @@ pub(crate) struct PrivateKeyPassphrase {
 
 #[cfg(test)]
 mod tests {
-    use crate::tunneling::tunnel::TunnelError;
-
     use super::*;
     #[test]
     fn check_basic_deserialization() {
         let config_str = r#"
+            [storage]
+            type = "local"
             [[tunnels]]
             name = "another_web_service"
             remote_ssh_address = "1.1.1.1"
@@ -78,26 +94,110 @@ mod tests {
             remote_interface_port = 9002
             to_address = "localhost"
             to_port = 8082
-
+            type = "generic"
         "#;
-        let parsed_config: Result<TungloConfig, toml::de::Error> = toml::from_str(&config_str);
+        let rqlite_config = r#"
+            [storage]
+            type = "rqlite"
+            rqlite_user = "macca"
+            rqlite_password = "pongle"
+            rqlite_host = "https://config-store:4001"
+            [[tunnels]]
+            name = "another_web_service"
+            remote_ssh_address = "1.1.1.1"
+            remote_ssh_port = 123
+            remote_ssh_user = "macca"
+            private_key_path = "path"
+            remote_interface_address = "1.0.0.0"
+            remote_interface_port = 9002
+            to_address = "localhost"
+            to_port = 8082
+            type = "generic"
+        "#;
+        let parsed_config: Result<TungloConfig, toml::de::Error> = toml::from_str(config_str);
+        let another_parsed_config: Result<TungloConfig, toml::de::Error> =
+            toml::from_str(rqlite_config);
         assert!(&parsed_config.is_ok());
+        assert!(&another_parsed_config.is_ok());
         let parsed_config = parsed_config.ok().unwrap();
-        assert_eq!(parsed_config.tunnels.len(), 1);
-        let tunnel = parsed_config.tunnels.first().unwrap();
-        assert_eq!(tunnel.name, "another_web_service".to_string());
-        assert_eq!(tunnel.remote_ssh_address, "1.1.1.1".to_string());
-        assert_eq!(tunnel.remote_ssh_port, 123);
-        assert_eq!(tunnel.remote_ssh_user, "macca".to_string());
-        assert_eq!(tunnel.private_key_path, "path".to_string());
-        assert_eq!(tunnel.remote_interface_port, 9002);
-        assert_eq!(tunnel.to_address, "localhost".to_string());
-        assert_eq!(tunnel.to_port, 8082);
-        assert_eq!(tunnel.tun_type, TunnelType::Http);
+        let another_parsed_config = another_parsed_config.ok().unwrap();
+        assert_eq!(parsed_config.tunnels.len(), 3);
+        let first_tunnel = parsed_config.tunnels.first().unwrap();
+        let second_tunnel = parsed_config.tunnels.get(1).unwrap();
+        let third_tunnel = parsed_config.tunnels.get(2).unwrap();
+        assert_eq!(
+            parsed_config.storage,
+            StorageConfig {
+                storage_type: StorageType::Local,
+                rqlite_password: None,
+                rqlite_user: None,
+                rqlite_host: None,
+            }
+        );
+        assert_eq!(
+            another_parsed_config.storage,
+            StorageConfig {
+                storage_type: StorageType::Rqlite,
+                rqlite_password: Some(String::from("pongle")),
+                rqlite_user: Some(String::from("macca")),
+                rqlite_host: Some(String::from("https://config-store:4001")),
+            }
+        );
+
+        assert_eq!(
+            *first_tunnel,
+            TunnelConfig {
+                name: String::from("another_web_service"),
+                remote_ssh_address: String::from("1.1.1.1"),
+                remote_ssh_port: 123,
+                remote_ssh_user: String::from("macca"),
+                private_key_path: String::from("path"),
+                private_key_passphrase: None,
+                remote_interface_address: String::from("1.0.0.0"),
+                remote_interface_port: 9002,
+                to_address: String::from("localhost"),
+                to_port: 8082,
+                tun_type: TunnelType::Http,
+            }
+        );
+        assert_eq!(
+            *second_tunnel,
+            TunnelConfig {
+                name: String::from("another_web_service"),
+                remote_ssh_address: String::from("1.1.1.1"),
+                remote_ssh_port: 123,
+                remote_ssh_user: String::from("macca"),
+                private_key_path: String::from("path"),
+                private_key_passphrase: None,
+                remote_interface_address: String::from("1.0.0.0"),
+                remote_interface_port: 9002,
+                to_address: String::from("localhost"),
+                to_port: 8082,
+                tun_type: TunnelType::Http2,
+            }
+        );
+        assert_eq!(
+            *third_tunnel,
+            TunnelConfig {
+                name: String::from("another_web_service"),
+                remote_ssh_address: String::from("1.1.1.1"),
+                remote_ssh_port: 123,
+                remote_ssh_user: String::from("macca"),
+                private_key_path: String::from("path"),
+                private_key_passphrase: None,
+                remote_interface_address: String::from("1.0.0.0"),
+                remote_interface_port: 9002,
+                to_address: String::from("localhost"),
+                to_port: 8082,
+                tun_type: TunnelType::Generic,
+            }
+        );
     }
     #[test]
     fn check_passphrase_deserialization() {
         let config_str = r#"
+            [storage]
+            type = "local"
             [[tunnels]]
             name = "another_web_service"
             remote_ssh_address = "1.1.1.1"
@@ -125,7 +225,7 @@ mod tests {
             [tunnels.private_key_passphrase]
             from_env = "env_key"
         "#;
-        let parsed_config: Result<TungloConfig, toml::de::Error> = toml::from_str(&config_str);
+        let parsed_config: Result<TungloConfig, toml::de::Error> = toml::from_str(config_str);
         assert!(&parsed_config.is_ok());
         let parsed_config = parsed_config.ok().unwrap();
         assert_eq!(parsed_config.tunnels.len(), 2);
