@@ -34,6 +34,7 @@ impl Storage for LocalStorage {
     ) -> Result<(), StorageError> {
         let conn = self.connection.clone();
         let conn = conn.lock().unwrap();
+        tracing::info!("storing fingerprint for {:?}", address);
         conn.execute(
             "insert into known_hosts values (?1, ?2)",
             (address, fingerprint),

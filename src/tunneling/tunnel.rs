@@ -114,7 +114,8 @@ impl Tunnel {
                 self.remote_ssh_port,
                 self.storage_config.clone(),
                 tx,
-            )?,
+            )
+            .await?,
         )
         .await?;
         session
