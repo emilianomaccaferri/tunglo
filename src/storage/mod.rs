@@ -3,6 +3,9 @@ use local::LocalStorage;
 use rqlite::RqliteStorage;
 use thiserror::Error;
 
+#[cfg(test)]
+use mockall::automock;
+
 use crate::{
     config::{StorageConfig, StorageType},
     tunneling::tunnel::TunnelError,
@@ -16,6 +19,7 @@ pub enum StorageError {
     LocalSqlite(rusqlite::Error, String),
 }
 
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub(crate) trait Storage: Send + Sync {
     async fn get_server_fingerprint(&self, address: &str) -> Result<Option<String>, StorageError>;

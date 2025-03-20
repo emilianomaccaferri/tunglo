@@ -1,13 +1,12 @@
 use crate::{
-    config::{StorageConfig, StorageType},
-    storage::{self, Storage, local::LocalStorage, rqlite::RqliteStorage},
+    config::StorageConfig,
+    storage::{self, Storage},
 };
 
 use super::{tunnel::TunnelError, tunnel_runner::TunnelRunner};
 use russh::{
     Channel,
     client::{self, Handler},
-    server,
 };
 use tokio::sync::mpsc::Sender;
 use tracing::info;
@@ -43,13 +42,12 @@ impl ClientHandler {
     }
 }
 impl Handler for ClientHandler {
-    type Error = russh::Error;
+    type Error = TunnelError;
 
     async fn check_server_key(
         &mut self,
         server_public_key: &russh::keys::ssh_key::PublicKey,
     ) -> Result<bool, Self::Error> {
-        // TODO: implment this!!
         info!(
             "{} got server key: {}",
             format!("{}:{}", self.server_address, self.server_port),
@@ -72,7 +70,7 @@ impl Handler for ClientHandler {
                     // check the stored fingerprint against the one we are getting
                     if !server_fingerprint.eq(&stored_fingerprint) {
                         tracing::error_span!("{:?} host key has changed!", self.server_address);
-                        return Ok(false);
+                        return Err(TunnelError::NastyKey);
                     }
                     tracing::info!(
                         "host key for {:?} matches the stored one",
@@ -80,26 +78,18 @@ impl Handler for ClientHandler {
                     );
                 } else {
                     // tofu: store the key!
-                    match self
-                        .storage
+                    self.storage
                         .store_server_fingerprint(
                             &self.server_address,
                             &server_fingerprint.to_string(),
                         )
-                        .await
-                    {
-                        Ok(_) => return Ok(true),
-                        Err(e) => {
-                            tracing::error!("{:?}", e);
-                            return Ok(false);
-                        }
-                    }
+                        .await?;
                 }
                 Ok(true)
             }
             Err(e) => {
                 tracing::error!("{}", e.to_string());
-                Ok(false)
+                Err(TunnelError::StorageLayer(e.to_string()))
             }
         }
     }
@@ -112,11 +102,127 @@ impl Handler for ClientHandler {
         _originator_port: u32,
         _session: &mut client::Session,
     ) -> Result<(), Self::Error> {
-        let tunnel_runner = TunnelRunner::new(&self.to_addr, self.to_port).unwrap();
+        let tunnel_runner = TunnelRunner::new(&self.to_addr, self.to_port)?;
         tracing::info!("incoming connection: {_originator_address}:{_originator_port}");
         self.tx.send((tunnel_runner, channel)).await.unwrap(); // send the runner back to the
         // Tunnel instance
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use russh::keys::{
+        PublicKey,
+        ssh_key::{Fingerprint, public::KeyData, rand_core::OsRng},
+    };
+    use storage::MockStorage;
+    use tokio::sync::mpsc;
+
+    use super::*;
+    use mockall::predicate::*;
+
+    fn create_public_key() -> PublicKey {
+        PublicKey::from_openssh(
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILM+rvN+ot98qgEN796jTiQfZfG1KaT0PtFDJ/XFSqti foo@bar.com",
+        ).unwrap()
+    }
+
+    fn nasty_public_key() -> PublicKey {
+        PublicKey::from_openssh(
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG9U2GJCV93/x/3BgfIsBGniZxit1ue9PrSU6cYmqcbo pangle@dongle.com",
+        ).unwrap()
+    }
+    // check if the key storage/verification process works as intended
+    // -> mocking the storage
+
+    #[tokio::test]
+    async fn no_fingerprint_test() {
+        let (tx, _rx) = mpsc::channel(1);
+        let public_key = create_public_key();
+        let fingerprint = public_key.fingerprint(Default::default());
+        let mut mock_storage = MockStorage::new();
+        mock_storage
+            .expect_get_server_fingerprint()
+            .with(eq("0.0.0.0"))
+            .times(1)
+            .returning(|_| Ok(None)); // new host test
+        mock_storage
+            .expect_store_server_fingerprint()
+            .with(eq("0.0.0.0"), eq(fingerprint.to_string()))
+            .times(1)
+            .returning(|_, __| Ok(()));
+
+        let mut client_handler = ClientHandler {
+            tx,
+            to_addr: String::from("1.2.3.4"),
+            to_port: 8080,
+            server_address: String::from("0.0.0.0"),
+            server_port: 5050,
+            storage: Box::new(mock_storage),
+        };
+
+        let result = client_handler.check_server_key(&public_key).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[tokio::test]
+    async fn nasty_key_test() {
+        let (tx, _rx) = mpsc::channel(1);
+
+        let mut mock_storage = MockStorage::new();
+        let nasty_key = nasty_public_key();
+        mock_storage
+            .expect_get_server_fingerprint()
+            .with(eq("0.0.0.0"))
+            .times(1)
+            .returning(|_| {
+                let public_key = create_public_key();
+                let fingerprint = public_key.fingerprint(Default::default());
+                Ok(Some(fingerprint.to_string()))
+            });
+        let mut client_handler = ClientHandler {
+            tx,
+            to_addr: String::from("1.2.3.4"),
+            to_port: 8080,
+            server_address: String::from("0.0.0.0"),
+            server_port: 5050,
+            storage: Box::new(mock_storage),
+        };
+
+        let result = client_handler.check_server_key(&nasty_key).await;
+        assert!(result.is_err());
+        matches!(result.err().unwrap(), TunnelError::NastyKey);
+    }
+    #[tokio::test]
+    async fn ok_key_test() {
+        let (tx, _rx) = mpsc::channel(1);
+
+        let mut mock_storage = MockStorage::new();
+        let nasty_key = create_public_key();
+        mock_storage
+            .expect_get_server_fingerprint()
+            .with(eq("0.0.0.0"))
+            .times(1)
+            .returning(|_| {
+                let public_key = create_public_key();
+                let fingerprint = public_key.fingerprint(Default::default());
+                Ok(Some(fingerprint.to_string()))
+            });
+        let mut client_handler = ClientHandler {
+            tx,
+            to_addr: String::from("1.2.3.4"),
+            to_port: 8080,
+            server_address: String::from("0.0.0.0"),
+            server_port: 5050,
+            storage: Box::new(mock_storage),
+        };
+
+        let result = client_handler.check_server_key(&nasty_key).await;
+        assert!(result.is_ok());
+        assert!(result.ok().unwrap());
     }
 }

@@ -57,6 +57,8 @@ pub enum TunnelError {
     NoRqliteHost,
     #[error("storage error: {0}")]
     StorageLayer(String),
+    #[error("someone is trying to do something nasty (cit.)")]
+    NastyKey,
 }
 impl From<AddrParseError> for TunnelError {
     fn from(value: AddrParseError) -> Self {
