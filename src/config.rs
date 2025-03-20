@@ -209,8 +209,7 @@ mod tests {
             to_address = "localhost"
             to_port = 8082
             type = "http"
-            [tunnels.private_key_passphrase]
-            value = "plaintext"
+            private_key_passphrase.value = "plaintext"
             [[tunnels]]
             name = "another_web_service"
             remote_ssh_address = "1.1.1.1"
@@ -222,8 +221,7 @@ mod tests {
             to_address = "localhost"
             to_port = 8082
             type = "http"
-            [tunnels.private_key_passphrase]
-            from_env = "env_key"
+            private_key_passphrase.from_env = "env_key"
         "#;
         let parsed_config: Result<TungloConfig, toml::de::Error> = toml::from_str(config_str);
         assert!(&parsed_config.is_ok());

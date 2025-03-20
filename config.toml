@@ -1,9 +1,10 @@
 [storage]
-type = "local" # uses a simple "known_hosts" file
-# type = "rqlite"
-# rqlite_host = "rqlite_host:3000"
-# rqlite_user = "" # Option
-# rqlite_password = "" # Option
+type = "local" # uses a simple "known_hosts" sqlite3 file
+# type = "rqlite" # uses a rqlite db (https://rqlite.io)
+# [storage.rqlite]
+# host.from_env = "ciao"
+# password.from_env "env_var"
+# user.value = "bomboclat"
 
 [[tunnels]]
 name = "my_web_service"
@@ -16,6 +17,5 @@ remote_interface_port = 9000
 to_address = "localhost"
 to_port = 8080
 type = "http"
-# [tunnels.private_key_passphrase]
-# value = "plaintext_value"
-# from_env = "env-var-name"
+# private_key_passphrase.value = "plaintext_value"
+# OR privatekey_passphrase.from_env = "env-var-name"

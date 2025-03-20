@@ -9,7 +9,6 @@ use russh::{
     client::{self, Handler},
 };
 use tokio::sync::mpsc::Sender;
-use tracing::info;
 
 pub(super) struct ClientHandler {
     tx: Sender<(TunnelRunner, Channel<client::Msg>)>,
@@ -48,8 +47,8 @@ impl Handler for ClientHandler {
         &mut self,
         server_public_key: &russh::keys::ssh_key::PublicKey,
     ) -> Result<bool, Self::Error> {
-        info!(
-            "{} got server key: {}",
+        tracing::info!(
+            "{}, got server key: {}",
             format!("{}:{}", self.server_address, self.server_port),
             server_public_key.fingerprint(Default::default())
         );
@@ -114,10 +113,7 @@ impl Handler for ClientHandler {
 #[cfg(test)]
 mod tests {
 
-    use russh::keys::{
-        PublicKey,
-        ssh_key::{Fingerprint, public::KeyData, rand_core::OsRng},
-    };
+    use russh::keys::PublicKey;
     use storage::MockStorage;
     use tokio::sync::mpsc;
 
