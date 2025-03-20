@@ -59,6 +59,11 @@ pub enum TunnelError {
     StorageLayer(String),
     #[error("someone is trying to do something nasty (cit.)")]
     NastyKey,
+    #[error(
+        "invalid passphrase configuration detected on tunnel `{0}`: \n
+        this usually happens when both from_env and value are not defined in [tunnels.private_key_passphrase]"
+    )]
+    InvalidPrivateKeyPassphraseConfiguration(String),
 }
 impl From<AddrParseError> for TunnelError {
     fn from(value: AddrParseError) -> Self {
@@ -85,8 +90,11 @@ impl From<russh::Error> for TunnelError {
 
 impl Tunnel {
     pub fn new(config: TunnelConfig, storage_config: StorageConfig) -> Result<Tunnel, TunnelError> {
-        let private_key =
-            Tunnel::load_private_key(&config.private_key_path, &config.private_key_passphrase)?;
+        let private_key = Tunnel::load_private_key(
+            &config.private_key_path,
+            &config.private_key_passphrase,
+            &config.name,
+        )?;
         Ok(Tunnel {
             name: config.name,
             private_key,
@@ -157,6 +165,7 @@ impl Tunnel {
     fn load_private_key(
         key_path: &str,
         passphrase: &Option<PrivateKeyPassphrase>,
+        tunnel_name: &str,
     ) -> Result<PrivateKey, TunnelError> {
         if let Some(passphrase) = passphrase {
             match passphrase {
@@ -178,7 +187,9 @@ impl Tunnel {
                     })?;
                     Ok(load_secret_key(key_path, Some(&env_value))?)
                 }
-                _ => Ok(load_secret_key(key_path, None)?),
+                _ => Err(TunnelError::InvalidPrivateKeyPassphraseConfiguration(
+                    tunnel_name.to_owned(),
+                )),
             }
         } else {
             Ok(load_secret_key(key_path, None)?)
