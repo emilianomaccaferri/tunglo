@@ -10,9 +10,13 @@ pub(crate) struct TungloConfig {
 pub(crate) struct StorageConfig {
     #[serde(rename = "type")]
     pub storage_type: StorageType,
-    pub rqlite_host: Option<String>,
-    pub rqlite_user: Option<String>,
-    pub rqlite_password: Option<String>,
+    pub rqlite: Option<RqliteStorageConfig>,
+}
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub(crate) struct RqliteStorageConfig {
+    host: RqliteHost(String),
+    user: Option<String>,
+    password: Option<String>,
 }
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub(crate) enum StorageType {
@@ -99,9 +103,10 @@ mod tests {
         let rqlite_config = r#"
             [storage]
             type = "rqlite"
-            rqlite_user = "macca"
-            rqlite_password = "pongle"
-            rqlite_host = "https://config-store:4001"
+            [storage.rqlite]
+            user.value = "macca"
+            password.value = "pongle"
+            host.value = "https://config-store:4001"
             [[tunnels]]
             name = "another_web_service"
             remote_ssh_address = "1.1.1.1"
@@ -129,18 +134,18 @@ mod tests {
             parsed_config.storage,
             StorageConfig {
                 storage_type: StorageType::Local,
-                rqlite_password: None,
-                rqlite_user: None,
-                rqlite_host: None,
+                rqlite: None,
             }
         );
         assert_eq!(
             another_parsed_config.storage,
             StorageConfig {
                 storage_type: StorageType::Rqlite,
-                rqlite_password: Some(String::from("pongle")),
-                rqlite_user: Some(String::from("macca")),
-                rqlite_host: Some(String::from("https://config-store:4001")),
+                rqlite: Some(RqliteStorageConfig {
+                    password: Some(String::from("pongle")),
+                    user: Some(String::from("macca")),
+                    host: String::from("https://config-store:4001"),
+                })
             }
         );
 
