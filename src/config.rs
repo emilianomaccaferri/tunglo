@@ -1,4 +1,7 @@
-use serde::Deserialize;
+use serde::{
+    Deserialize,
+    de::{self, Visitor},
+};
 
 pub const DEFAULT_PATH: &str = "~/.config/tunglo.toml";
 #[derive(Deserialize, Debug, PartialEq)]
@@ -14,9 +17,14 @@ pub(crate) struct StorageConfig {
 }
 #[derive(Deserialize, Debug, Clone, PartialEq)]
 pub(crate) struct RqliteStorageConfig {
-    host: RqliteHost(String),
-    user: Option<String>,
-    password: Option<String>,
+    host: String,
+    user: EnvOrValue,
+    password: EnvOrValue,
+}
+#[derive(Clone, PartialEq, Debug)]
+pub(crate) struct EnvOrValue {
+    from_env: Option<String>,
+    value: Option<String>,
 }
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub(crate) enum StorageType {
@@ -56,6 +64,48 @@ pub(crate) struct PrivateKeyPassphrase {
     pub value: Option<String>,
     /// the private key must be fetched from an environmental variable (env-var-name)
     pub from_env: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for EnvOrValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct EnvOrValueVisitor;
+        impl<'de> Visitor<'de> for EnvOrValueVisitor {
+            type Value = EnvOrValue;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter
+                    .write_str("a map with at least one between `from_env` or `value` set to Some")
+            }
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut from_env = None;
+                let mut value = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "from_env" => from_env = Some(map.next_value()?),
+                        "value" => value = Some(map.next_value()?),
+                        _ => return Err(de::Error::unknown_field(&key, &["from_env", "value"])),
+                    }
+                }
+
+                if from_env.is_none() && value.is_none() {
+                    return Err(de::Error::custom(
+                        "at least one betwenn `from_env` or `value` must be provided!",
+                    ));
+                }
+                if from_env.is_some() && value.is_some() {
+                    from_env = None; // value takes precedence
+                }
+                Ok(EnvOrValue { value, from_env })
+            }
+        }
+        deserializer.deserialize_map(EnvOrValueVisitor)
+    }
 }
 
 #[cfg(test)]
@@ -142,8 +192,14 @@ mod tests {
             StorageConfig {
                 storage_type: StorageType::Rqlite,
                 rqlite: Some(RqliteStorageConfig {
-                    password: Some(String::from("pongle")),
-                    user: Some(String::from("macca")),
+                    password: EnvOrValue {
+                        from_env: None,
+                        value: Some(String::from("pongle"))
+                    },
+                    user: EnvOrValue {
+                        from_env: None,
+                        value: Some(String::from("macca")),
+                    },
                     host: String::from("https://config-store:4001"),
                 })
             }
