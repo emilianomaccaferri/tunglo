@@ -53,8 +53,8 @@ pub enum TunnelError {
     Env(String),
     #[error("ssh error: {0}")]
     Ssh(String),
-    #[error("no rqlite host specified!")]
-    NoRqliteHost,
+    #[error("no rqlite config specified!")]
+    NoRqliteConfig,
     #[error("storage error: {0}")]
     StorageLayer(String),
     #[error("someone is trying to do something nasty (cit.)")]

@@ -34,14 +34,14 @@ pub(crate) trait Storage: Send + Sync {
 pub fn get_storage(storage_config: StorageConfig) -> Result<Box<dyn Storage>, TunnelError> {
     match storage_config.storage_type {
         StorageType::Rqlite => {
-            if let Some(host) = storage_config.rqlite_host {
+            if let Some(config) = storage_config.rqlite {
                 Ok(Box::new(RqliteStorage::new(
-                    &host,
-                    storage_config.rqlite_user,
-                    storage_config.rqlite_password,
+                    config.host.get(),
+                    config.user,
+                    config.password,
                 )))
             } else {
-                Err(TunnelError::NoRqliteHost)
+                Err(TunnelError::NoRqliteConfig)
             }
         }
         StorageType::Local => Ok(Box::new(LocalStorage::new()?)),

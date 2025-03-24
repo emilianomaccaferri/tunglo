@@ -4,7 +4,11 @@ use super::{Storage, StorageError};
 
 pub struct RqliteStorage;
 impl RqliteStorage {
-    pub fn new(host: &str, user: Option<String>, password: Option<String>) -> Self {
+    pub fn new(
+        host: &str,
+        user: Option<impl Into<String>>,
+        password: Option<impl Into<String>>,
+    ) -> Self {
         RqliteStorage {}
     }
 }
