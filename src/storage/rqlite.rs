@@ -1,15 +1,33 @@
+use std::sync::{Arc, Mutex};
+
 use async_trait::async_trait;
+use rqlite_rs::prelude::{RqliteClient, RqliteClientBuilder};
+
+use crate::tunneling::tunnel::TunnelError;
 
 use super::{Storage, StorageError};
 
-pub struct RqliteStorage;
+pub struct RqliteStorage {
+    client: RqliteClient,
+}
 impl RqliteStorage {
     pub fn new(
         host: &str,
         user: Option<impl Into<String>>,
         password: Option<impl Into<String>>,
-    ) -> Self {
-        RqliteStorage {}
+    ) -> Result<Self, TunnelError> {
+        let client_builder = {
+            if user.is_some() && password.is_some() {
+                RqliteClientBuilder::new()
+                    .known_host(host)
+                    .auth(&user.unwrap().into(), &password.unwrap().into())
+            } else {
+                RqliteClientBuilder::new().known_host(host)
+            }
+        };
+
+        let client = client_builder.build()?;
+        Ok(RqliteStorage { client })
     }
 }
 #[async_trait]

@@ -39,7 +39,7 @@ pub fn get_storage(storage_config: StorageConfig) -> Result<Box<dyn Storage>, Tu
                     config.host.get(),
                     config.user,
                     config.password,
-                )))
+                )?))
             } else {
                 Err(TunnelError::NoRqliteConfig)
             }

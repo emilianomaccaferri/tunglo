@@ -65,6 +65,11 @@ pub enum TunnelError {
     )]
     InvalidPrivateKeyPassphraseConfiguration(String),
 }
+impl From<rqlite_rs::error::ClientBuilderError> for TunnelError {
+    fn from(value: rqlite_rs::error::ClientBuilderError) -> Self {
+        TunnelError::StorageLayer(value.to_string())
+    }
+}
 impl From<AddrParseError> for TunnelError {
     fn from(value: AddrParseError) -> Self {
         Self::InvalidAddress(value.to_string())

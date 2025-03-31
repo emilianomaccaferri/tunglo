@@ -9,6 +9,7 @@ clap = { version = "4.5.31", features = ["derive"] }
 futures = "0.3.31"
 hyper = { version = "1.6.0", features = ["full"] }
 rusqlite = "0.34.0"
+rqlite-rs = { git = "https://github.com/tomvoet/rqlite-rs.git", branch = "fix/fallback-strategy-multi-threading-trait-bounds" }
 russh = "0.50.0"
 serde = { version = "1.0.218", features = ["derive"] }
 thiserror = "2.0.11"
