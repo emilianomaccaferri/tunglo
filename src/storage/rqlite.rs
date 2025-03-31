@@ -33,7 +33,7 @@ impl RqliteStorage {
 #[async_trait]
 impl Storage for RqliteStorage {
     async fn get_server_fingerprint(&self, address: &str) -> Result<Option<String>, StorageError> {
-        Ok(Some(String::from("ciao")))
+        Ok(Some(String::from("")))
     }
     async fn store_server_fingerprint(
         &self,
